@@ -136,7 +136,7 @@ def create_speed_video(csv_file, output_path):
         # Переименовываем остальные колонки, чтобы соответствовали типу 1
         data.rename(columns={'speed': 'Speed', 'pwm': 'PWM', 'voltage': 'Voltage',
                              'power': 'Power', 'battery_level': 'Battery level',
-                             'temp2': 'Temperature', 'totaldistance': 'Total mileage',
+                             'system_temp': 'Temperature', 'totaldistance': 'Total mileage',
                              'gps_speed': 'GPS Speed'}, inplace=True)
         
         # Преобразование пробега из метров в километры для файла типа 2
