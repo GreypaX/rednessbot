@@ -36,15 +36,20 @@ os.environ["IMAGEMAGICK_BINARY"] = os.path.join(application_path, 'magick')
 logging.info("Путь к ffmpeg: " + os.environ["IMAGEIO_FFMPEG_EXE"])
 logging.info("Путь к ImageMagick: " + os.environ["IMAGEMAGICK_BINARY"])
 
-
-
 # Настройка логирования
 logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
-
+def update_max_speed(speeds):
+    max_speed = 0
+    max_speeds = []
+    for speed in speeds:
+        if speed > max_speed:
+            max_speed = speed
+        max_speeds.append(max_speed)
+    return max_speeds
 
 def create_or_clean_hidden_folder():
-    logging.info("Начало выполнения функции create_speed_video")
+    logging.info("Начало выполнения функции create_or_clean_hidden_folder")
     # Определение пути к папке в домашнем каталоге пользователя
     home_dir = os.path.expanduser('~')
     temp_folder_path = os.path.join(home_dir, 'redness_temp_files')
@@ -59,7 +64,6 @@ def create_or_clean_hidden_folder():
 
     print(f"Создана папка временных файлов: {temp_folder_path}")
     return temp_folder_path
-
 
 def check_memory():
     memory = psutil.virtual_memory()
@@ -94,7 +98,6 @@ def update_progress_bar(progress):
     # Преобразование процента выполнения в значение от 0 до 1
     progress_value = progress / 100.0
     progress_bar.set(progress_value)  # Обновление customtkinter прогресс-бара
-
 
 def create_speed_video(csv_file, output_path):
     print("Начало выполнения функции create_speed_video")
@@ -142,6 +145,9 @@ def create_speed_video(csv_file, output_path):
         # Преобразование пробега из метров в километры для файла типа 2
         data['Total mileage'] = data['Total mileage'] / 1000
 
+    # Добавление колонки с максимальной скоростью
+    data['MaxSpeed'] = data['Speed'].cummax()
+
     data['Duration'] = data['Date'].diff().dt.total_seconds().fillna(0)
 
     # Установка начального значения пробега
@@ -181,7 +187,7 @@ def create_speed_video(csv_file, output_path):
 
             # Формирование текста с данными
             parameters = [
-
+                ("Макс. скорость", int(data['MaxSpeed'].iloc[index]), "км/ч"),
                 ("Напряжение", int(row['Voltage']), "В"),
                 ("Мощность", int(row['Power']), "Вт"),
                 ("Температура", int(row['Temperature']), "°C"),
@@ -189,8 +195,6 @@ def create_speed_video(csv_file, output_path):
                 ("Пробег", current_mileage, "км"),
                 ("ШИМ", pwm, "%"),
                 ("GPS", int(row['GPS Speed']), "км/ч") if not pd.isna(row['GPS Speed']) else ("GPS", "", "")
-
-
             ]
 
             # Создаем фоновый клип для этого кадра
