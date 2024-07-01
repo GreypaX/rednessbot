@@ -18,7 +18,8 @@ from tkinter import filedialog, scrolledtext, ttk
 import tkinter.messagebox
 import customtkinter as ctk
 import customtkinter
-from PIL import Image
+import math
+from PIL import Image, ImageDraw
 
 # Определение пути к приложению
 if getattr(sys, 'frozen', False):
@@ -38,6 +39,76 @@ logging.info("Путь к ImageMagick: " + os.environ["IMAGEMAGICK_BINARY"])
 
 # Настройка логирования
 logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
+
+
+from PIL import Image, ImageDraw
+import math
+
+def interpolate_color(color1, color2, factor):
+    return tuple(int(color1[i] + (color2[i] - color1[i]) * factor) for i in range(3)) + (255,)
+
+def create_speed_indicator(speed, size=500):
+    image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+    
+    # Если скорость равна 0, возвращаем пустое изображение
+    if speed == 0:
+        return image
+
+    mask = Image.new('L', (size, size), 0)
+    draw = ImageDraw.Draw(image)
+    mask_draw = ImageDraw.Draw(mask)
+
+    center = size // 2
+    radius = size // 2 - 10
+    start_angle = 150  # Начальный угол (0 км/ч) - 5 часов
+    end_angle = 30     # Конечный угол (100 км/ч) - 1 час
+    arc_width = 20
+    corner_radius = arc_width // 2  # Радиус закругления
+
+    # Определяем цвет в зависимости от скорости
+    green = (0, 255, 0)
+    yellow = (255, 255, 0)
+    red = (255, 0, 0)
+
+    if speed < 70:
+        factor = speed / 70
+        color = interpolate_color(green, yellow, factor)
+    elif speed < 85:
+        factor = (speed - 70) / 15
+        color = interpolate_color(yellow, red, factor)
+    else:
+        color = red + (255,)  # Добавляем альфа-канал
+
+    # Рассчитываем угол для текущей скорости
+    if end_angle < start_angle:
+        end_angle += 360
+    current_angle = start_angle + (end_angle - start_angle) * (min(speed, 100) / 100)
+    current_angle %= 360
+
+    # Рисуем дугу на маске
+    mask_draw.arc([10, 10, size-10, size-10], start=start_angle, end=current_angle, fill=255, width=arc_width)
+
+    # Добавляем закругленные концы
+    start_x = center + (radius - arc_width // 2) * math.cos(math.radians(start_angle))
+    start_y = center + (radius - arc_width // 2) * math.sin(math.radians(start_angle))
+    end_x = center + (radius - arc_width // 2) * math.cos(math.radians(current_angle))
+    end_y = center + (radius - arc_width // 2) * math.sin(math.radians(current_angle))
+
+    mask_draw.ellipse([start_x - corner_radius, start_y - corner_radius, 
+                       start_x + corner_radius, start_y + corner_radius], fill=255)
+    mask_draw.ellipse([end_x - corner_radius, end_y - corner_radius, 
+                       end_x + corner_radius, end_y + corner_radius], fill=255)
+
+    # Создаем цветное изображение
+    color_image = Image.new('RGBA', (size, size), color)
+
+    # Применяем маску к цветному изображению
+    color_image.putalpha(mask)
+
+    # Накладываем цветное изображение на основное
+    image = Image.alpha_composite(image, color_image)
+
+    return image
 
 def update_max_speed(speeds):
     max_speed = 0
@@ -79,9 +150,9 @@ def parse_date(date_str):
     return datetime.datetime.strptime(date_str, '%d.%m.%Y %H:%M:%S.%f')
 
 def get_speed_color(speed):
-    if 70 <= speed < 80:
+    if 70 <= speed < 85:
         return 'yellow'
-    elif speed >= 80:
+    elif speed >= 85:
         return 'red'
     else:
         return 'white'
@@ -170,6 +241,17 @@ def create_speed_video(csv_file, output_path):
         # Создание видеоклипов для текущей части
         clips = []
         for index, row in chunk_data.iterrows():
+            speed = int(row['Speed'])
+
+            # Создаем индикатор скорости
+            speed_indicator = create_speed_indicator(speed)
+            speed_indicator_path = os.path.join(hidden_folder, f'speed_indicator_{index}.png')
+            speed_indicator.save(speed_indicator_path, 'PNG')
+
+            # Создаем клип из изображения индикатора скорости
+            speed_indicator_clip = ImageClip(speed_indicator_path).set_duration(row['Duration'])
+            speed_indicator_clip = speed_indicator_clip.set_position((1673, 1708))  # Позиция графического спидометра
+
             # Создаем клип графика для текущего кадра
             graph_clip = create_graph(data, row['Date'], row['Duration'])
             # Размещаем клип с графиком в правом нижнем углу экрана
@@ -251,7 +333,7 @@ def create_speed_video(csv_file, output_path):
                 y_start += max_height  # Используем max_height для учета выравнивания по нижнему краю
 
             # Создаем текстовый клип для значения скорости (TextClip1)
-            speed_value_clip = TextClip(f"{int(row['Speed'])}", fontsize=210, color=speed_color, font=font_bold_path)
+            speed_value_clip = TextClip(f"{int(row['Speed'])}", fontsize=200, color=speed_color, font=font_bold_path)
             speed_value_clip = speed_value_clip.set_position(lambda t: ('center', 2160 - speed_value_clip.size[1] - 100)).set_duration(row['Duration'])
 
             # Создаем текстовый клип для единиц измерения скорости (TextClip2)
@@ -259,7 +341,8 @@ def create_speed_video(csv_file, output_path):
             speed_unit_clip = speed_unit_clip.set_position(lambda t: ((3840 - speed_unit_clip.size[0]) / 2, speed_value_clip.pos(t)[1] + speed_value_clip.size[1] + -25)).set_duration(row['Duration']) # отступ от нижнего края для скорости КРУПНЫЙ
 
             # Объединяем фоновый клип с текстовыми клипами и центральным текстовым клипом
-            video_clip = CompositeVideoClip([background_clip] + text_clips + [speed_value_clip, speed_unit_clip, graph_clip])
+            video_clip = CompositeVideoClip([background_clip] + text_clips + [speed_value_clip, speed_unit_clip, graph_clip, speed_indicator_clip])
+            os.remove(speed_indicator_path)
             clips.append(video_clip)
 
             total_processed += 1
@@ -270,7 +353,7 @@ def create_speed_video(csv_file, output_path):
 
         # Сохранение временного видеофайла для текущей части
         temp_output_path = os.path.join(hidden_folder, f"{output_file_name}_part_{start//chunk_size}.mp4")
-        concatenate_videoclips(clips, method="compose").write_videofile(temp_output_path, fps=5, bitrate="20000k")
+        concatenate_videoclips(clips, method="compose").write_videofile(temp_output_path, fps=15, bitrate="20000k")
         temp_video_files.append(temp_output_path)
         print(f"Временный видеофайл {temp_output_path} создан.")
         # print(f"output_path: {output_path}") #для отладки
@@ -283,7 +366,7 @@ def create_speed_video(csv_file, output_path):
 
     if check_memory():
         final_clip = concatenate_videoclips(final_clips, method="compose")
-        final_clip.write_videofile(output_path, fps=5, codec='libx264', bitrate="20000k")
+        final_clip.write_videofile(output_path, fps=15, codec='libx264', bitrate="20000k")
         print(f"Финальное видео сохранено в {output_path}")
     else:
         print("Прерывание создания финального видео, недостаточно памяти.")
@@ -483,7 +566,7 @@ def on_thread_complete():
 
 if __name__ == "__main__":
     app = ctk.CTk()
-    app.title("RednessBot 1.15")
+    app.title("RednessBot 1.19")
 
     # Установка размера окна и прочие настройки
     app.wm_minsize(350, 550)
