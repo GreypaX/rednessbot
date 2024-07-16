@@ -40,16 +40,15 @@
 
 **Получаемый файл:**
 
-![Пример видео телеметрии](https://github.com/GreypaX/rednessbot/assets/59764924/75a13390-8800-4021-a849-c534eea564c0)
+![Пример видео телеметрии](https://github.com/user-attachments/assets/4ddfca00-4c9d-4149-b725-d200d3f9863d)
 
 **Результат после наложения в монтажной программе:**
 
-![Пример наложенного видео](https://github.com/GreypaX/rednessbot/assets/59764924/cd123f7f-281c-48e1-9e50-32cac0102e6f)
+![Пример наложенного видео](https://github.com/user-attachments/assets/cb7aee5b-8218-4757-bd28-16190fca2623)
 
 **Получаемый файл с примером в динамике:**
 
-![dark20240109_231823 2](https://github.com/GreypaX/rednessbot/assets/59764924/ce9b20ec-840b-4a7d-bf49-7f767e2f8086)
-
+![output](https://github.com/user-attachments/assets/d261d91d-c66d-415a-8ab2-ec50e73be320)
 смотреть пример наложения телеметрии [на youtube](https://youtu.be/-AFmMTA96d0)
 
 ## Системные требования
