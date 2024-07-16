@@ -19,7 +19,10 @@ import tkinter.messagebox
 import customtkinter as ctk
 import customtkinter
 import math
+import time
 from PIL import Image, ImageDraw
+
+start_time = 0
 
 # Определение пути к приложению
 if getattr(sys, 'frozen', False):
@@ -171,6 +174,7 @@ def update_progress_bar(progress):
     progress_bar.set(progress_value)  # Обновление customtkinter прогресс-бара
 
 def create_speed_video(csv_file, output_path):
+    global start_time    
     print("Начало выполнения функции create_speed_video")
     hidden_folder = create_or_clean_hidden_folder()
 
@@ -322,9 +326,9 @@ def create_speed_video(csv_file, output_path):
                 unit_clip = unit_clip.set_position((x_position + name_clip.size[0] + value_clip.size[0] + 40, unit_y)).set_duration(row['Duration'])
 
                 # ЕСЛИ ПРОГРАММА КРАШИТСЯ СНИМИ ЭТИ КОММЕНТАРИИ будет видно почему крашится
-                #print(f"Created TextClip for {param_name}. Size: {name_clip.size}")
-                #print(f"Created TextClip for {param_value}. Size: {value_clip.size}")
-                #print(f"Created TextClip for {unit}. Size: {unit_clip.size}")
+                print(f"Created TextClip for {param_name}. Size: {name_clip.size}")
+                print(f"Created TextClip for {param_value}. Size: {value_clip.size}")
+                print(f"Created TextClip for {unit}. Size: {unit_clip.size}")
 
                 # Добавляем клипы в список
                 text_clips.extend([name_clip, value_clip, unit_clip])
@@ -356,7 +360,7 @@ def create_speed_video(csv_file, output_path):
         concatenate_videoclips(clips, method="compose").write_videofile(temp_output_path, fps=15, bitrate="20000k")
         temp_video_files.append(temp_output_path)
         print(f"Временный видеофайл {temp_output_path} создан.")
-        # print(f"output_path: {output_path}") #для отладки
+        print(f"output_path: {output_path}") #для отладки
         # Очистка памяти после обработки и сохранения каждого чанка
         gc.collect()
 
@@ -367,21 +371,22 @@ def create_speed_video(csv_file, output_path):
     if check_memory():
         final_clip = concatenate_videoclips(final_clips, method="compose")
         final_clip.write_videofile(output_path, fps=15, codec='libx264', bitrate="20000k")
-        print(f"Финальное видео сохранено в {output_path}")
-    else:
-        print("Прерывание создания финального видео, недостаточно памяти.")
-
-    # Удаление временных видеофайлов
+    print(f"Финальное видео сохранено в {output_path}")
     for file in temp_video_files:
         os.remove(file)
         print(f"Временный файл {file} удален.")
-    # Удаление самой скрытой папки
     shutil.rmtree(hidden_folder)
     print(f"Скрытая папка {hidden_folder} удалена.")
+    print("Обработка завершена успешно!")
+    # Добавьте следующий блок кода здесь
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    minutes, seconds = divmod(elapsed_time, 60)
+    print(f"Времени затрачено: {int(minutes)} минут {int(seconds)} секунд")
+    
     on_thread_complete()
-    progress_bar["value"] = 0    
+    progress_bar.set(0)
     print("Окончание выполнения функции create_speed_video")
-
     logging.info("Функция create_speed_video завершила выполнение")
 
 def create_graph(data, current_time, duration):
@@ -516,8 +521,13 @@ def choose_output_directory():
 
 
 def start_processing():
+    global start_time
     csv_file = csv_file_path.get()
     output_path = determine_output_path(csv_file, output_dir_path.get())
+
+    # Устанавливаем время начала обработки
+    start_time = time.time()
+    print(f"Начало обработки: {start_time}")  # Добавьте эту строку для отладки
 
     # Запуск тяжелых вычислений в отдельном потоке
     processing_thread = threading.Thread(target=create_speed_video, args=(csv_file, output_path))
@@ -555,18 +565,23 @@ def check_thread(thread):
 
 
 def on_thread_complete():
-    print("Обработка завершена успешно!")
+    global start_time
+    print("Функция on_thread_complete начала выполнение")
     # Активация кнопок
     choose_csv_button.configure(state=ctk.NORMAL)
     choose_output_dir_button.configure(state=ctk.NORMAL)
     start_button.configure(state=ctk.NORMAL)
-    # Здесь можно добавить код для обновления GUI или уведомления пользователя
-
-
+    
+    # Вычисление времени выполнения
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    minutes, seconds = divmod(elapsed_time, 60)
+    print(f"Времени затрачено (on_thread_complete): {int(minutes)} минут {int(seconds)} секунд")
+    print("Функция on_thread_complete завершила выполнение")
 
 if __name__ == "__main__":
     app = ctk.CTk()
-    app.title("RednessBot 1.19")
+    app.title("RednessBot 1.20")
 
     # Установка размера окна и прочие настройки
     app.wm_minsize(350, 550)
