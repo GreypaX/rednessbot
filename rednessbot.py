@@ -22,6 +22,68 @@ import math
 import time
 from PIL import Image, ImageDraw
 
+print(f"Путь к скрипту: {__file__}")
+print(f"Абсолютный путь к скрипту: {os.path.abspath(__file__)}")
+script_dir = os.path.dirname(os.path.abspath(__file__))
+print(f"Директория скрипта: {script_dir}")
+localization_dir = os.path.join(script_dir, 'localization')
+print(f"Ожидаемая директория локализации: {localization_dir}")
+print(f"Существует ли директория локализации: {os.path.exists(localization_dir)}")
+if os.path.exists(localization_dir):
+    print("Содержимое директории локализации:")
+    txt_files = [item for item in os.listdir(localization_dir) if item.endswith('.txt')]
+    for item in txt_files:
+        print(f"  - {item}")
+else:
+    print(f"Ошибка: Директория локализации не найдена: {localization_dir}")
+
+# Глобальные переменные для локализации
+current_language = 'en'
+localizations = {}
+
+def load_localizations():
+    global localizations
+    language_names = {}
+    for file in os.listdir(localization_dir):
+        if file.endswith('.txt'):
+            lang = file[:-4]  # Удаляем расширение .txt
+            file_path = os.path.join(localization_dir, file)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    lines = f.readlines()
+                    if lines and lines[0].startswith('language='):
+                        language_names[lang] = lines[0].strip().split('=')[1]
+                        localizations[lang] = dict(line.strip().split('=') for line in lines[1:] if '=' in line)
+                    else:
+                        print(f"Ошибка: файл локализации '{file}' не содержит строку 'language='")
+                print(f"Локализация для языка '{lang}' успешно загружена")
+            except Exception as e:
+                print(f"Ошибка при загрузке локализации для языка '{lang}': {str(e)}")
+    return language_names
+
+def get_localized_string(key):
+    if current_language not in localizations or key not in localizations[current_language]:
+        print(f"Warning: Missing localization for key '{key}' in language '{current_language}'")
+        return key
+    return localizations[current_language].get(key, key)
+
+def change_language(lang):
+    global current_language
+    if lang in localizations:
+        current_language = lang
+        update_ui_language()
+    else:
+        print(f"Предупреждение: локализация для языка '{lang}' не найдена")
+
+def update_ui_language():
+    global description_label, choose_csv_button, choose_output_dir_button, start_button, language_label, language_menu
+    description_label.configure(text=get_localized_string('app_description'))
+    choose_csv_button.configure(text=get_localized_string('choose_csv'))
+    choose_output_dir_button.configure(text=get_localized_string('choose_output'))
+    start_button.configure(text=get_localized_string('start_process'))
+    language_label.configure(text=get_localized_string('language'))
+    language_menu.set(language_names[current_language])
+
 start_time = 0
 
 # Определение пути к приложению
@@ -135,16 +197,14 @@ def create_or_clean_hidden_folder():
 
     # Создаем папку
     os.makedirs(temp_folder_path)
-
-    print(f"Создана папка временных файлов: {temp_folder_path}")
     return temp_folder_path
 
 def check_memory():
     memory = psutil.virtual_memory()
     available_memory = int(memory.available / (1024 * 1024))  # В мегабайтах, округлено до целого числа
-    print(f"Доступная память: {available_memory} MB")
+    print(get_localized_string("log_available_memory").format(available_memory))
     if available_memory < 4 * 1024:  # Порог в 4 ГБ
-        print("Предупреждение: низкий уровень доступной памяти!")
+        print(get_localized_string("log_low_memory_warning"))
         return False
     return True
 
@@ -175,7 +235,6 @@ def update_progress_bar(progress):
 
 def create_speed_video(csv_file, output_path):
     global start_time    
-    print("Начало выполнения функции create_speed_video")
     hidden_folder = create_or_clean_hidden_folder()
 
     # Определение имени файла для сохранения видео
@@ -234,9 +293,10 @@ def create_speed_video(csv_file, output_path):
 
     # Обрабатываем данные частями
     for start in range(0, len(data), chunk_size):
+        print(get_localized_string("log_processing_chunk").format(start, start + chunk_size))
         end = min(start + chunk_size, len(data))
         chunk_data = data[start:end]
-        print(f"Обработка чанка данных с {start} по {start + chunk_size}")
+        print(get_localized_string("log_processing_chunk").format(start, start + chunk_size))
 
         if not check_memory():
             print(f"Прерывание обработки на чанке {start}, недостаточно памяти.")
@@ -273,14 +333,14 @@ def create_speed_video(csv_file, output_path):
 
             # Формирование текста с данными
             parameters = [
-                ("Макс. скорость", int(data['MaxSpeed'].iloc[index]), "км/ч"),
-                ("Напряжение", int(row['Voltage']), "В"),
-                ("Мощность", int(row['Power']), "Вт"),
-                ("Температура", int(row['Temperature']), "°C"),
-                ("Батарея", int(row['Battery level']), "%"),
-                ("Пробег", current_mileage, "км"),
-                ("ШИМ", pwm, "%"),
-                ("GPS", int(row['GPS Speed']), "км/ч") if not pd.isna(row['GPS Speed']) else ("GPS", "", "")
+                (get_localized_string("max_speed"), int(data['MaxSpeed'].iloc[index]), get_localized_string("km_h")),
+                (get_localized_string("voltage"), int(row['Voltage']), get_localized_string("volt")),
+                (get_localized_string("power"), int(row['Power']), get_localized_string("watt")),
+                (get_localized_string("temperature"), int(row['Temperature']), get_localized_string("celsius")),
+                (get_localized_string("battery"), int(row['Battery level']), "%"),
+                (get_localized_string("mileage"), current_mileage, get_localized_string("km")),
+                (get_localized_string("pwm"), pwm, "%"),
+                ("GPS", int(row['GPS Speed']), get_localized_string("km_h")) if not pd.isna(row['GPS Speed']) else ("GPS", "", "")
             ]
 
             # Создаем фоновый клип для этого кадра
@@ -341,7 +401,7 @@ def create_speed_video(csv_file, output_path):
             speed_value_clip = speed_value_clip.set_position(lambda t: ('center', 2160 - speed_value_clip.size[1] - 100)).set_duration(row['Duration'])
 
             # Создаем текстовый клип для единиц измерения скорости (TextClip2)
-            speed_unit_clip = TextClip("км/ч", fontsize=60, color='white', font=font_regular_path)
+            speed_unit_clip = TextClip(get_localized_string("speed_unit"), fontsize=60, color='white', font=font_regular_path)
             speed_unit_clip = speed_unit_clip.set_position(lambda t: ((3840 - speed_unit_clip.size[0]) / 2, speed_value_clip.pos(t)[1] + speed_value_clip.size[1] + -25)).set_duration(row['Duration']) # отступ от нижнего края для скорости КРУПНЫЙ
 
             # Объединяем фоновый клип с текстовыми клипами и центральным текстовым клипом
@@ -580,51 +640,78 @@ def on_thread_complete():
     print("Функция on_thread_complete завершила выполнение")
 
 if __name__ == "__main__":
-    app = ctk.CTk()
-    app.title("RednessBot 1.20")
+    # Загрузка локализаций и получение списка языков
+    language_names = load_localizations()
+    language_options = list(language_names.values())
+    try:
+        app = ctk.CTk()
+        app.title("RednessBot 1.22")
 
-    # Установка размера окна и прочие настройки
-    app.wm_minsize(350, 550)
-    app.wm_maxsize(350, app.winfo_screenheight())
-    current_width = 350
-    current_height = 550
-    new_width = int(current_width)
-    app.geometry(f"{new_width}x{current_height}")
-    app.resizable(True, True)
+        # Установка размера окна и прочие настройки
+        app.wm_minsize(350, 550)
+        app.wm_maxsize(350, app.winfo_screenheight())
+        current_width = 350
+        current_height = 560
+        new_width = int(current_width)
+        app.geometry(f"{new_width}x{current_height}")
+        app.resizable(True, True)
 
-    # Создание виджетов с использованием customtkinter
-    description_label = ctk.CTkLabel(app, text="Приложение накладывает телеметрию на ваше видео из файла экспорта DarknessBot и WheelLog, отображая скорость, остальные параметры и график скорость/ШИМ.", wraplength=300)
-    description_label.pack(pady=(20, 0))
+        # Создание виджетов с использованием customtkinter
+        description_label = ctk.CTkLabel(app, text=get_localized_string('app_description'), wraplength=300)
+        description_label.pack(pady=(20, 0))
 
-    csv_file_path = tk.StringVar()
-    choose_csv_button = ctk.CTkButton(app, text="Выбрать CSV файл DarknessBot или WheelLog", command=choose_csv_file)
-    choose_csv_button.pack(pady=(20, 0))
+        # Добавление выпадающего списка для выбора языка
+        language_frame = ctk.CTkFrame(app)
+        language_frame.pack(pady=(20, 0))
 
-    csv_file_entry = ctk.CTkEntry(app, textvariable=csv_file_path, width=300)
-    csv_file_entry.pack(pady=(20, 0))
+        language_label = ctk.CTkLabel(language_frame, text=get_localized_string('language'))
+        language_label.pack(side=tk.LEFT, padx=(0, 10))
 
-    output_dir_path = tk.StringVar()
-    choose_output_dir_button = ctk.CTkButton(app, text="Выбрать директорию для сохранения видео", command=choose_output_directory)
-    choose_output_dir_button.pack(pady=(20, 0))
+        default_language = 'en'  # или любой другой язык по умолчанию
+        language_var = tk.StringVar(value=language_names.get(default_language, language_options[0] if language_options else ''))
 
-    output_dir_entry = ctk.CTkEntry(app, textvariable=output_dir_path, width=300)
-    output_dir_entry.pack(pady=(20, 0))
+        language_menu = ctk.CTkOptionMenu(language_frame, values=language_options, 
+                                          command=lambda x: change_language(next(lang for lang, name in language_names.items() if name == x)),
+                                          variable=language_var)
+        language_menu.pack(side=tk.LEFT)
 
-    button_frame = ctk.CTkFrame(app, width=200, height=50)
-    button_frame.pack_propagate(False)
-    button_frame.pack(pady=(30, 0))
+        csv_file_path = tk.StringVar()
+        choose_csv_button = ctk.CTkButton(app, text=get_localized_string('choose_csv'), command=choose_csv_file)
+        choose_csv_button.pack(pady=(20, 0))
 
-    start_button = ctk.CTkButton(button_frame, text="Начать процесс", command=start_processing, state='disabled')
-    start_button.pack(fill='both', expand=True)
- 
-    progress_bar = ctk.CTkProgressBar(master=app, width=300)
-    progress_bar.set(0)
-    progress_bar.pack(pady=20, padx=20, )
+        csv_file_entry = ctk.CTkEntry(app, textvariable=csv_file_path, width=300)
+        csv_file_entry.pack(pady=(20, 0))
+
+        output_dir_path = tk.StringVar()
+        choose_output_dir_button = ctk.CTkButton(app, text=get_localized_string('choose_output'), command=choose_output_directory)
+        choose_output_dir_button.pack(pady=(20, 0))
+
+        output_dir_entry = ctk.CTkEntry(app, textvariable=output_dir_path, width=300)
+        output_dir_entry.pack(pady=(20, 0))
+
+        button_frame = ctk.CTkFrame(app, width=200, height=50)
+        button_frame.pack_propagate(False)
+        button_frame.pack(pady=(30, 0))
+
+        start_button = ctk.CTkButton(button_frame, text=get_localized_string('start_process'), command=start_processing, state='disabled')
+        start_button.pack(fill='both', expand=True)
+     
+        progress_bar = ctk.CTkProgressBar(master=app, width=300)
+        progress_bar.set(0)
+        progress_bar.pack(pady=20, padx=20, )
 
 
-    console_log = customtkinter.CTkTextbox(app, height=10)
-    console_log.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, pady=(20, 20),padx=(20, 20))
+        console_log = customtkinter.CTkTextbox(app, height=10)
+        console_log.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, pady=(20, 20),padx=(20, 20))
 
-    redirect_to_textbox(console_log)
+        redirect_to_textbox(console_log)
 
-    app.mainloop()
+        update_ui_language()
+
+        change_language('en')
+
+        app.mainloop()
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        import traceback
+        traceback.print_exc()
