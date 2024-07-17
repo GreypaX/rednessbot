@@ -361,8 +361,8 @@ def create_speed_video(csv_file, output_path):
                     
                 # Выбор цвета текста в зависимости от параметра
                 text_color = 'white'  # цвет по умолчанию
-                if param_name == "ШИМ":
-                    text_color = get_pwm_color(param_value)    
+                if param_name == get_localized_string("pwm"):
+                    text_color = get_pwm_color(param_value)  
 
                 # Создаем отдельные клипы для каждой части параметра
                 name_clip = TextClip(param_name, fontsize=70 , color='white', font=font_regular_path)
@@ -648,7 +648,7 @@ if __name__ == "__main__":
         app.title("RednessBot 1.22")
 
         # Установка размера окна и прочие настройки
-        app.wm_minsize(350, 550)
+        app.wm_minsize(350, 560)
         app.wm_maxsize(350, app.winfo_screenheight())
         current_width = 350
         current_height = 560
