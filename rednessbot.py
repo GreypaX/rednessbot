@@ -78,18 +78,6 @@ def save_settings():
         print(f"Ошибка при сохранении настроек: {e}")
 
 
-# Определение функции resource_path
-def resource_path(relative_path):
-    """Получает абсолютный путь к ресурсу, учитывая режим упаковки приложения."""
-    if getattr(sys, 'frozen', False):
-        # Если приложение собрано, используйте путь к исполняемому файлу
-        base_path = os.path.dirname(sys.executable)
-    else:
-        # В режиме разработки используйте путь к текущему файлу
-        base_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_path, relative_path)
-
-
 def update_start_button_state():
     """Обновляет состояние кнопки 'Начать процесс' в зависимости от заполненных и существующих полей."""
     csv_exists = os.path.isfile(csv_file_path.get())
@@ -319,9 +307,8 @@ def create_speed_images(csv_file, output_dir, interpolate=True, fps=30):
     frame_duration = 1 / fps  # Продолжительность одного кадра в секундах
 
     # Определение путей к шрифтам
-    font_regular_path = Path(resource_path(os.path.join('fonts', 'sf-ui-display-regular.otf')))
-    font_bold_path = Path(resource_path(os.path.join('fonts', 'sf-ui-display-bold.otf')))
-    ffmpeg_path = resource_path(os.path.join('resources', 'ffmpeg', 'ffmpeg'))
+    font_regular_path = Path(__file__).parent / 'fonts' / 'sf-ui-display-regular.otf'
+    font_bold_path = Path(__file__).parent / 'fonts' / 'sf-ui-display-bold.otf'
 
     # Отступы и расстояния
     left_padding = 25
@@ -363,7 +350,7 @@ def create_speed_images(csv_file, output_dir, interpolate=True, fps=30):
 
     # Генерация frame_times на основе оригинальных данных
     total_frames = int(total_duration * fps)
-    frame_times = pd.date_range(start=start_time_data, periods=total_frames, freq=f'{int(1000/fps)}L')
+    frame_times = pd.date_range(start=start_time_data, periods=total_frames, freq=f'{int(1000/fps)}L')  # '67L' для 15 fps
 
     print(f"Общая продолжительность: {total_duration:.3f} секунд")
     print(f"Всего кадров для генерации: {total_frames}")
@@ -373,71 +360,45 @@ def create_speed_images(csv_file, output_dir, interpolate=True, fps=30):
         return
 
     if interpolate:
-        # Процессинг данных согласно заданной логике без изменения timestamps
+        # Создаем новый DataFrame для интерполированных данных
+        interpolated_data = pd.DataFrame(index=frame_times, columns=data.columns)
 
-        def process_column(data, frame_times, column):
-            # Инициализация переменных
-            group_numbers = []
-            group_num = 0
-            group_size = 0
-            prev_value = None
+        # Для каждого кадра находим ближайшие значения и интерполируем
+        for frame_time in frame_times:
+            # Находим ближайшие значения до и после текущего времени кадра
+            before = data.loc[:frame_time].last_valid_index()
+            after = data.loc[frame_time:].first_valid_index()
 
-            for idx, value in zip(data.index, data[column]):
-                if value != prev_value or group_size >= 4 or pd.isna(value):
-                    group_num += 1
-                    group_size = 1
-                else:
-                    group_size += 1
-                group_numbers.append(group_num)
-                prev_value = value
+            if before is None:
+                # Если нет данных до текущего времени, используем следующее доступное значение
+                interpolated_data.loc[frame_time] = data.loc[after]
+            elif after is None:
+                # Если нет данных после текущего времени, используем предыдущее доступное значение
+                interpolated_data.loc[frame_time] = data.loc[before]
+            elif before == after:
+                # Если время кадра совпадает с временем в данных, используем это значение
+                interpolated_data.loc[frame_time] = data.loc[before]
+            else:
+                # Выполняем линейную интерполяцию между двумя ближайшими значениями
+                total_seconds = (after - before).total_seconds()
+                weight_after = (frame_time - before).total_seconds() / total_seconds
+                weight_before = 1 - weight_after
 
-            data[f'GroupNum_{column}'] = group_numbers
+                interpolated_values = data.loc[before] * weight_before + data.loc[after] * weight_after
+                interpolated_data.loc[frame_time] = interpolated_values
 
-            # Оставляем только первое значение в каждой группе
-            data_grouped = data.groupby(f'GroupNum_{column}').first()
-
-            # Округляем значения до целого числа
-            data_grouped[column] = data_grouped[column].round().astype(int)
-
-            # Индекс остается неизменным (timestamps не изменяются)
-
-            # Реиндексируем по времени кадров, без изменения индекса data_grouped
-            data_column = data_grouped[column].reindex(frame_times, method=None)
-
-            # Заменяем пустые значения на 0
-            data_column = data_column.fillna(0)
-
-            # Интерполируем пропущенные значения
-            data_column = data_column.interpolate(method='linear', limit_direction='both')
-
-            return data_column
-
-        # Инициализируем новый DataFrame для обработанных данных
-        processed_data = pd.DataFrame(index=frame_times)
-
-        columns_to_process = data.columns
-
-        for column in columns_to_process:
-            print(f"Обработка столбца {column}")
-            # Обрабатываем каждый столбец
-            data_column = process_column(data, frame_times, column)
-            # Добавляем в обработанные данные
-            processed_data[column] = data_column
-
-        # Используем обработанные данные
-        data = processed_data
-        print("Пользовательская интерполяция применена.")
+        # Используем интерполированные данные
+        data = interpolated_data
+        print("Интерполяция значений включена.")
     else:
         # Без интерполяции: заполняем данные ближайшими значениями
         data = data.reindex(frame_times, method='nearest')
-        print("Интерполяция отключена.")
+        print("Интерполяция значений отключена.")
 
     # Проверка, что данные не пусты после обработки
     if data.empty:
         print("Нет данных для обработки после выполнения операций.")
         return
-
-    # Остальная часть функции без изменений...
 
     # Определение максимальной скорости из всего CSV файла
     max_speed = max(data['Speed'].max(), 100)
@@ -447,7 +408,7 @@ def create_speed_images(csv_file, output_dir, interpolate=True, fps=30):
     data['MaxSpeed'] = data['Speed'].cummax()
 
     # Установка начального значения пробега
-    initial_mileage = data['Total mileage'].iloc[0] if 'Total mileage' in data.columns and not pd.isna(data['Total mileage'].iloc[0]) else 0
+    initial_mileage = data['Total mileage'].iloc[0] if not pd.isna(data['Total mileage'].iloc[0]) else 0
 
     # Создание выходной директории, если она не существует
     output_dir = Path(output_dir)
