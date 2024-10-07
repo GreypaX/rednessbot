@@ -1,4 +1,4 @@
-# RednessBot (v1.22)
+# RednessBot (v1.3)
 
 ## Описание
 
@@ -42,16 +42,16 @@
 
 **Получаемый файл:**
 
-![Пример видео телеметрии](https://github.com/user-attachments/assets/4ddfca00-4c9d-4149-b725-d200d3f9863d)
+![Пример видео телеметрии](https://github.com/user-attachments/assets/bd6832ca-1580-4ba5-ac3f-7d25afacce23)
 
 **Результат после наложения в монтажной программе:**
 
-![Пример наложенного видео](https://github.com/user-attachments/assets/cb7aee5b-8218-4757-bd28-16190fca2623)
+![Пример наложенного видео](https://github.com/user-attachments/assets/7774b3df-4333-436d-a636-da58db81cecf)
 
 **Получаемый файл с примером в динамике:**
 
 ![output](https://github.com/user-attachments/assets/d261d91d-c66d-415a-8ab2-ec50e73be320)
-смотреть пример наложения телеметрии [на youtube](https://youtu.be/-AFmMTA96d0)
+смотреть пример наложения телеметрии [на youtube]([https://youtu.be/-AFmMTA96d0](https://youtu.be/lIuKFA-nXBE?si))
 
 ## Системные требования
 
