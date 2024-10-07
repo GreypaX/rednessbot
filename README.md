@@ -4,8 +4,8 @@
 
 **RednessBot** - это скрипт на Python, предназначенный для обработки данных телеметрии из CSV файла, экспортируемого из программы [Darknessbot для iOS](https://apps.apple.com/us/app/darknessbot/id1108403878) а так же программы [WheelLog для Android](https://play.google.com/store/apps/details?id=com.cooper.wheellog&hl=en_US) . Программа имеет удобный GUI интерфейс и позволяет создать видеофайл в формате mp4 с графическим отображением скорости, ШИМ, пробега поездки, мощности, заряда батареи и т.д., а также графиком "Скорость/ШИМ". Видео телеметрии создается с черным фоном в разрешении 4K, и его можно легко наложить на ваше видео заезда на электротранспорте (моноколесо/самокат) в любой монтажной программе, поддерживающей удаление хромокея.
 
-<img width="351" alt="Снимок экрана 2024-07-17 в 12 20 46" src="https://github.com/user-attachments/assets/a0abcad7-357e-4634-8eda-a4a2869f7118">
-<img width="350" alt="Снимок экрана 2024-07-17 в 12 20 54" src="https://github.com/user-attachments/assets/435275f9-594c-4c29-bd46-f3e1d0492bca">
+<img width="349" alt="Снимок экрана 2024-10-07 в 13 02 42" src="https://github.com/user-attachments/assets/e7e246bb-3968-417c-8650-b33fdfa22646">
+<img width="350" alt="Снимок экрана 2024-10-07 в 13 03 19" src="https://github.com/user-attachments/assets/73cfa6d5-6a1e-43d4-ab56-522b74084210">
 
 ## Особенности
 
@@ -52,11 +52,6 @@
 
 ![output](https://github.com/user-attachments/assets/d342b47e-a320-4552-9111-057e40e78e05)
 смотреть пример наложения телеметрии [на youtube]([https://youtu.be/-AFmMTA96d0](https://youtu.be/lIuKFA-nXBE?si))
-
-## Системные требования
-
-- Не менее 8 ГБ оперативной памяти (скоро это значение будет меньше).
-- Не менее 35 гб. свободного места на диске.
 
 ## Обсуждение
 
