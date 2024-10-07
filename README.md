@@ -54,7 +54,7 @@
 смотреть пример наложения телеметрии [на youtube]([https://youtu.be/-AFmMTA96d0](https://youtu.be/lIuKFA-nXBE?si))
 
 
-## Обсуждение (BETA)
+## Режим интерполяции (BETA)
 Интерполяция сглаживает значения скорости работает в beta режиме возможны ошибки
 
 ![Figure_1](https://github.com/user-attachments/assets/4bffccbb-5edc-4555-b8b2-78ed2258d9ad)
