@@ -53,6 +53,12 @@
 ![output](https://github.com/user-attachments/assets/d342b47e-a320-4552-9111-057e40e78e05)
 смотреть пример наложения телеметрии [на youtube]([https://youtu.be/-AFmMTA96d0](https://youtu.be/lIuKFA-nXBE?si))
 
+
+## Обсуждение (BETA)
+Интерполяция сглаживает значения скорости работает в beta режиме возможны ошибки
+
+![Figure_1](https://github.com/user-attachments/assets/4bffccbb-5edc-4555-b8b2-78ed2258d9ad)
+
 ## Обсуждение
 
 Обсуждение программы и её функционала в [telegram канале @rednessbot_tele](https://t.me/rednessbot_tele)
