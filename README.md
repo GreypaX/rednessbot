@@ -50,7 +50,7 @@
 
 **Получаемый файл с примером в динамике:**
 
-![output](https://github.com/user-attachments/assets/d261d91d-c66d-415a-8ab2-ec50e73be320)
+![output](https://github.com/user-attachments/assets/d342b47e-a320-4552-9111-057e40e78e05)
 смотреть пример наложения телеметрии [на youtube]([https://youtu.be/-AFmMTA96d0](https://youtu.be/lIuKFA-nXBE?si))
 
 ## Системные требования
