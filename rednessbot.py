@@ -1,4 +1,3 @@
-import os
 import sys
 import subprocess
 import shutil
@@ -8,58 +7,133 @@ import threading
 import logging
 import gc
 import pandas as pd
-import matplotlib
-matplotlib.use('Agg')  # Это должно быть перед импортом pyplot
-import matplotlib.pyplot as plt
-from moviepy.editor import ColorClip, TextClip, CompositeVideoClip, concatenate_videoclips, VideoFileClip, ImageClip
 import psutil
 import tkinter as tk
 from tkinter import filedialog, scrolledtext, ttk
 import tkinter.messagebox
 import customtkinter as ctk
-import customtkinter
 import math
 import time
-from PIL import Image, ImageDraw
+import os
+import json
+from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
-print(f"Путь к скрипту: {__file__}")
-print(f"Абсолютный путь к скрипту: {os.path.abspath(__file__)}")
-script_dir = os.path.dirname(os.path.abspath(__file__))
-print(f"Директория скрипта: {script_dir}")
-localization_dir = os.path.join(script_dir, 'localization')
-print(f"Ожидаемая директория локализации: {localization_dir}")
-print(f"Существует ли директория локализации: {os.path.exists(localization_dir)}")
-if os.path.exists(localization_dir):
-    print("Содержимое директории локализации:")
-    txt_files = [item for item in os.listdir(localization_dir) if item.endswith('.txt')]
-    for item in txt_files:
-        print(f"  - {item}")
-else:
-    print(f"Ошибка: Директория локализации не найдена: {localization_dir}")
+CONFIG_FILE = Path(__file__).parent / 'config.json'
 
 # Глобальные переменные для локализации
 current_language = 'en'
 localizations = {}
+language_names = {}  # Добавлено
+
+
+def load_settings():
+    """Загружает настройки из файла конфигурации."""
+    print(f"Начало загрузки настроек. Путь к файлу конфигурации: {CONFIG_FILE}")
+
+    if CONFIG_FILE.exists():
+        print(f"Файл конфигурации найден: {CONFIG_FILE}")
+        try:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                content = f.read()
+                print(f"Содержимое файла конфигурации:\n{content}")
+                settings = json.loads(content)
+
+            print("Настройки успешно прочитаны из файла.")
+
+            csv_file = settings.get('csv_file', '')
+            output_dir = settings.get('output_dir', '')
+            video_output_dir = settings.get('video_output_dir', '')
+            current_language_code = settings.get('language', 'en')
+            fps = settings.get('fps', 30)  # Добавлено
+
+            print(f"Загруженные пути:\nCSV: {csv_file}\nOutput: {output_dir}\nVideo: {video_output_dir}")
+            print(f"Загруженный язык: {current_language_code}")
+            print(f"Загруженный FPS: {fps}")
+
+            return csv_file, output_dir, video_output_dir, current_language_code, fps
+        except Exception as e:
+            print(f"Ошибка при загрузке настроек: {e}")
+    else:
+        print(f"Файл настроек не найден: {CONFIG_FILE}")
+
+    return '', '', '', 'en', 30  # Возвращаем FPS по умолчанию, если что-то пошло не так
+
+
+def save_settings():
+    """Сохраняет текущие настройки в файл конфигурации."""
+    settings = {
+        'csv_file': csv_file_path.get(),
+        'output_dir': output_dir_path.get(),
+        'video_output_dir': video_output_dir_path.get(),
+        'language': current_language,
+        'fps': fps_value.get()  # Добавлено
+    }
+    try:
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(settings, f, ensure_ascii=False, indent=4)
+        print("Настройки успешно сохранены.")
+    except Exception as e:
+        print(f"Ошибка при сохранении настроек: {e}")
+
+
+# Определение функции resource_path
+def resource_path(relative_path):
+    """Получает абсолютный путь к ресурсу, учитывая режим упаковки приложения."""
+    if getattr(sys, 'frozen', False):
+        # Если приложение собрано, используйте путь к исполняемому файлу
+        base_path = os.path.dirname(sys.executable)
+    else:
+        # В режиме разработки используйте путь к текущему файлу
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+
+def update_start_button_state():
+    """Обновляет состояние кнопки 'Начать процесс' в зависимости от заполненных и существующих полей."""
+    csv_exists = os.path.isfile(csv_file_path.get())
+    output_dir_exists = os.path.isdir(output_dir_path.get())
+    video_output_dir_exists = os.path.isdir(video_output_dir_path.get())
+
+    if csv_exists and output_dir_exists and video_output_dir_exists:
+        start_button.configure(state=ctk.NORMAL)
+    else:
+        start_button.configure(state=ctk.DISABLED)
+
 
 def load_localizations():
-    global localizations
+    global localizations, language_names
     language_names = {}
-    for file in os.listdir(localization_dir):
-        if file.endswith('.txt'):
-            lang = file[:-4]  # Удаляем расширение .txt
-            file_path = os.path.join(localization_dir, file)
-            try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    lines = f.readlines()
-                    if lines and lines[0].startswith('language='):
-                        language_names[lang] = lines[0].strip().split('=')[1]
-                        localizations[lang] = dict(line.strip().split('=') for line in lines[1:] if '=' in line)
-                    else:
-                        print(f"Ошибка: файл локализации '{file}' не содержит строку 'language='")
-                print(f"Локализация для языка '{lang}' успешно загружена")
-            except Exception as e:
-                print(f"Ошибка при загрузке локализации для языка '{lang}': {str(e)}")
+    localization_dir = Path(__file__).parent / 'localization'
+    for file in localization_dir.glob('*.txt'):
+        lang = file.stem  # Remove .txt extension
+        try:
+            with open(file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                if lines and lines[0].startswith('language='):
+                    # Получаем имя языка
+                    language_names[lang] = lines[0].strip().split('=')[1]
+
+                    # Создаём словарь локализации без первой строки
+                    localization_dict = {}
+                    for line in lines[1:]:
+                        if '=' in line:
+                            key, value = line.strip().split('=', 1)
+                            localization_dict[key] = value
+
+                    # Добавляем ключ 'language' в локализацию
+                    localization_dict['language'] = language_names[lang]
+
+                    # Сохраняем в глобальный словарь
+                    localizations[lang] = localization_dict
+                else:
+                    print(f"Ошибка: файл локализации '{file.name}' не содержит строку 'language='")
+            print(f"Локализация для языка '{lang}' успешно загружена")
+        except Exception as e:
+            print(f"Ошибка при загрузке локализации для языка '{lang}': {str(e)}")
     return language_names
+
 
 def get_localized_string(key):
     if current_language not in localizations or key not in localizations[current_language]:
@@ -67,54 +141,87 @@ def get_localized_string(key):
         return key
     return localizations[current_language].get(key, key)
 
+
 def change_language(lang):
     global current_language
     if lang in localizations:
         current_language = lang
         update_ui_language()
+        save_settings()  # Сохраняем настройки после смены языка
+        update_start_button_state()  # Обновляем состояние кнопки
     else:
         print(f"Предупреждение: локализация для языка '{lang}' не найдена")
 
+
 def update_ui_language():
-    global description_label, choose_csv_button, choose_output_dir_button, start_button, language_label, language_menu
     description_label.configure(text=get_localized_string('app_description'))
     choose_csv_button.configure(text=get_localized_string('choose_csv'))
     choose_output_dir_button.configure(text=get_localized_string('choose_output'))
+    choose_video_output_dir_button.configure(text=get_localized_string('Choose video MP4 output'))
     start_button.configure(text=get_localized_string('start_process'))
     language_label.configure(text=get_localized_string('language'))
-    language_menu.set(language_names[current_language])
+    interpolation_checkbox.configure(text=get_localized_string('enable_interpolation'))
+    fps_label.configure(text=get_localized_string('fps_label'))
+    language_menu.set(language_names.get(current_language, language_options[0]))
+
 
 start_time = 0
 
-# Определение пути к приложению
-if getattr(sys, 'frozen', False):
-    # Если приложение запущено как собранный исполняемый файл
-    application_path = sys._MEIPASS
-else:
-    # Если приложение запущено как скрипт (.py)
-    application_path = os.path.dirname(os.path.abspath(__file__))
 
-# Установка переменных окружения для ffmpeg и ImageMagick
-os.environ["IMAGEIO_FFMPEG_EXE"] = os.path.join(application_path, 'ffmpeg')
-os.environ["IMAGEMAGICK_BINARY"] = os.path.join(application_path, 'magick')
+def update_video_progress(progress):
+    progress_bar.set(progress / 100)
 
-# Логирование путей
-logging.info("Путь к ffmpeg: " + os.environ["IMAGEIO_FFMPEG_EXE"])
-logging.info("Путь к ImageMagick: " + os.environ["IMAGEMAGICK_BINARY"])
+
+def create_video_from_images(png_dir, video_output_path, fps=30):
+    try:
+        fps = float(fps)
+    except ValueError:
+        fps = 30  # Значение по умолчанию, если ввод некорректен
+
+    # Команда для ffmpeg с нужными параметрами
+    command = [
+        'ffmpeg',
+        '-r', str(fps),  # Частота кадров изменена на введенное значение FPS
+        '-f', 'image2',
+        '-i', os.path.join(png_dir, 'frame_%07d.png'),
+        '-vcodec', 'h264_videotoolbox',
+        '-b:v', '500k',
+        '-pix_fmt', 'yuv420p',
+        video_output_path
+    ]
+
+    try:
+        # Запуск ffmpeg с выводом в реальном времени
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+        # Обработка вывода ffmpeg и обновление прогресс-бара
+        total_frames = len([f for f in os.listdir(png_dir) if f.endswith('.png')])
+        frame_count = 0
+
+        for line in process.stdout:
+            if "frame=" in line:
+                frame_count += 1
+                progress = frame_count / total_frames * 100
+                app.after(0, update_video_progress, progress)
+            print(line, end='')  # Выводим строки процесса
+
+        process.wait()
+        print("Видео успешно создано!")
+    except Exception as e:
+        print(f"Ошибка при создании видео: {e}")
+
 
 # Настройка логирования
 logging.basicConfig(filename='app.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
 
-from PIL import Image, ImageDraw
-import math
-
 def interpolate_color(color1, color2, factor):
     return tuple(int(color1[i] + (color2[i] - color1[i]) * factor) for i in range(3)) + (255,)
 
+
 def create_speed_indicator(speed, size=500):
     image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-    
+
     # Если скорость равна 0, возвращаем пустое изображение
     if speed == 0:
         return image
@@ -175,29 +282,6 @@ def create_speed_indicator(speed, size=500):
 
     return image
 
-def update_max_speed(speeds):
-    max_speed = 0
-    max_speeds = []
-    for speed in speeds:
-        if speed > max_speed:
-            max_speed = speed
-        max_speeds.append(max_speed)
-    return max_speeds
-
-def create_or_clean_hidden_folder():
-    logging.info("Начало выполнения функции create_or_clean_hidden_folder")
-    # Определение пути к папке в домашнем каталоге пользователя
-    home_dir = os.path.expanduser('~')
-    temp_folder_path = os.path.join(home_dir, 'redness_temp_files')
-
-    # Проверяем, существует ли папка
-    if os.path.exists(temp_folder_path):
-        # Удаляем папку вместе с содержимым
-        shutil.rmtree(temp_folder_path)
-
-    # Создаем папку
-    os.makedirs(temp_folder_path)
-    return temp_folder_path
 
 def check_memory():
     memory = psutil.virtual_memory()
@@ -208,358 +292,382 @@ def check_memory():
         return False
     return True
 
+
 # Функция для преобразования строки даты в объект datetime
 def parse_date(date_str):
-    return datetime.datetime.strptime(date_str, '%d.%m.%Y %H:%M:%S.%f')
+    try:
+        return datetime.datetime.strptime(date_str, '%d.%m.%Y %H:%M:%S.%f')
+    except ValueError:
+        # Попробуем другой формат
+        return datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f')
 
-def get_speed_color(speed):
-    if 70 <= speed < 85:
-        return 'yellow'
-    elif speed >= 85:
-        return 'red'
-    else:
-        return 'white'
-
-def get_pwm_color(pwm):
-    if 80 <= pwm < 90:
-        return 'yellow'
-    elif pwm >= 90:
-        return 'red'
-    else:
-        return 'white'
 
 def update_progress_bar(progress):
-    # Преобразование процента выполнения в значение от 0 до 1
-    progress_value = progress / 100.0
-    progress_bar.set(progress_value)  # Обновление customtkinter прогресс-бара
+    # Убедимся, что прогресс не превышает 100%
+    progress = min(progress, 100.0)
+    progress_bar.set(progress / 100.0)
 
-def create_speed_video(csv_file, output_path):
-    global start_time    
-    hidden_folder = create_or_clean_hidden_folder()
 
-    # Определение имени файла для сохранения видео
-    if not output_path:
-        base_dir = os.path.dirname(csv_file)
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_file_name = f"rednessbot{timestamp}.mp4"
-        output_path = os.path.join(base_dir, output_file_name)
-    else:
-        base_dir, output_file_name = os.path.split(output_path)
+def create_speed_images(csv_file, output_dir, interpolate=True, fps=30):
+    global start_time
+
+    try:
+        fps = float(fps)
+    except ValueError:
+        fps = 30  # Значение по умолчанию, если ввод некорректен
+
+    frame_duration = 1 / fps  # Продолжительность одного кадра в секундах
 
     # Определение путей к шрифтам
-    font_regular_path = os.path.join(os.path.dirname(__file__), 'fonts', 'sf-ui-display-regular.otf')
-    font_bold_path = os.path.join(os.path.dirname(__file__), 'fonts', 'sf-ui-display-bold.otf')
-    
-    total_processed = 0  # для инициализации счетчика обработанных записей
+    font_regular_path = Path(resource_path(os.path.join('fonts', 'sf-ui-display-regular.otf')))
+    font_bold_path = Path(resource_path(os.path.join('fonts', 'sf-ui-display-bold.otf')))
+    ffmpeg_path = resource_path(os.path.join('resources', 'ffmpeg', 'ffmpeg'))
+
+    # Отступы и расстояния
+    left_padding = 25
+    right_padding = 15
+    vertical_padding = 10
+    parameter_spacing = 15
+
+    total_processed = 0  # Счётчик обработанных записей
+
     # Чтение данных из файла
-    data = pd.read_csv(csv_file, nrows=0)  # Сначала читаем только заголовки
+    data = pd.read_csv(csv_file)
 
     # Определение типа файла по названиям колонок
     if 'Date' in data.columns and 'Speed' in data.columns:
         file_type = 1
+        data['Date'] = data['Date'].apply(parse_date)
     elif 'date' in data.columns and 'time' in data.columns:
         file_type = 2
-    else:
-        raise ValueError("Неверный формат файла")
-
-    # Полное чтение файла в зависимости от типа
-    if file_type == 1:
-        data = pd.read_csv(csv_file)
-        data['Date'] = data['Date'].apply(parse_date)
-    elif file_type == 2:
-        # Чтение файла с разделением даты и времени и последующее объединение
-        data = pd.read_csv(csv_file)
         data['Date'] = pd.to_datetime(data['date'] + ' ' + data['time'])
-        # Переименовываем остальные колонки, чтобы соответствовали типу 1
         data.rename(columns={'speed': 'Speed', 'pwm': 'PWM', 'voltage': 'Voltage',
                              'power': 'Power', 'battery_level': 'Battery level',
                              'system_temp': 'Temperature', 'totaldistance': 'Total mileage',
                              'gps_speed': 'GPS Speed'}, inplace=True)
-        
-        # Преобразование пробега из метров в километры для файла типа 2
         data['Total mileage'] = data['Total mileage'] / 1000
+    else:
+        raise ValueError("Неверный формат файла")
+
+    # Сортируем данные по времени на случай, если они не упорядочены
+    data.sort_values('Date', inplace=True)
+    data.reset_index(drop=True, inplace=True)
+
+    # Устанавливаем индекс DataFrame по времени
+    data.set_index('Date', inplace=True)
+
+    # Определение временного диапазона
+    start_time_data = data.index.min()
+    end_time_data = data.index.max()
+    total_duration = (end_time_data - start_time_data).total_seconds()
+
+    # Генерация frame_times на основе оригинальных данных
+    total_frames = int(total_duration * fps)
+    frame_times = pd.date_range(start=start_time_data, periods=total_frames, freq=f'{int(1000/fps)}L')
+
+    print(f"Общая продолжительность: {total_duration:.3f} секунд")
+    print(f"Всего кадров для генерации: {total_frames}")
+
+    if total_frames == 0:
+        print("Общая продолжительность слишком мала для генерации кадров с заданной частотой.")
+        return
+
+    if interpolate:
+        # Процессинг данных согласно заданной логике без изменения timestamps
+
+        def process_column(data, frame_times, column):
+            # Инициализация переменных
+            group_numbers = []
+            group_num = 0
+            group_size = 0
+            prev_value = None
+
+            for idx, value in zip(data.index, data[column]):
+                if value != prev_value or group_size >= 4 or pd.isna(value):
+                    group_num += 1
+                    group_size = 1
+                else:
+                    group_size += 1
+                group_numbers.append(group_num)
+                prev_value = value
+
+            data[f'GroupNum_{column}'] = group_numbers
+
+            # Оставляем только первое значение в каждой группе
+            data_grouped = data.groupby(f'GroupNum_{column}').first()
+
+            # Округляем значения до целого числа
+            data_grouped[column] = data_grouped[column].round().astype(int)
+
+            # Индекс остается неизменным (timestamps не изменяются)
+
+            # Реиндексируем по времени кадров, без изменения индекса data_grouped
+            data_column = data_grouped[column].reindex(frame_times, method=None)
+
+            # Заменяем пустые значения на 0
+            data_column = data_column.fillna(0)
+
+            # Интерполируем пропущенные значения
+            data_column = data_column.interpolate(method='linear', limit_direction='both')
+
+            return data_column
+
+        # Инициализируем новый DataFrame для обработанных данных
+        processed_data = pd.DataFrame(index=frame_times)
+
+        columns_to_process = data.columns
+
+        for column in columns_to_process:
+            print(f"Обработка столбца {column}")
+            # Обрабатываем каждый столбец
+            data_column = process_column(data, frame_times, column)
+            # Добавляем в обработанные данные
+            processed_data[column] = data_column
+
+        # Используем обработанные данные
+        data = processed_data
+        print("Пользовательская интерполяция применена.")
+    else:
+        # Без интерполяции: заполняем данные ближайшими значениями
+        data = data.reindex(frame_times, method='nearest')
+        print("Интерполяция отключена.")
+
+    # Проверка, что данные не пусты после обработки
+    if data.empty:
+        print("Нет данных для обработки после выполнения операций.")
+        return
+
+    # Остальная часть функции без изменений...
+
+    # Определение максимальной скорости из всего CSV файла
+    max_speed = max(data['Speed'].max(), 100)
+    print(f"Максимальная скорость: {max_speed}")
 
     # Добавление колонки с максимальной скоростью
     data['MaxSpeed'] = data['Speed'].cummax()
 
-    data['Duration'] = data['Date'].diff().dt.total_seconds().fillna(0)
-
     # Установка начального значения пробега
-    initial_mileage = data.iloc[0]['Total mileage']
+    initial_mileage = data['Total mileage'].iloc[0] if 'Total mileage' in data.columns and not pd.isna(data['Total mileage'].iloc[0]) else 0
 
-    # Определяем размер части данных для обработки
-    chunk_size = 50
-    temp_video_files = []
+    # Создание выходной директории, если она не существует
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Обрабатываем данные частями
-    for start in range(0, len(data), chunk_size):
-        print(get_localized_string("log_processing_chunk").format(start, start + chunk_size))
-        end = min(start + chunk_size, len(data))
-        chunk_data = data[start:end]
-        print(get_localized_string("log_processing_chunk").format(start, start + chunk_size))
+    # Подготовка шрифтов
+    try:
+        font_regular = ImageFont.truetype(str(font_regular_path), 50)
+        font_bold = ImageFont.truetype(str(font_bold_path), 50)
+    except IOError as e:
+        print(f"Ошибка загрузки шрифтов: {e}")
+        return
 
-        if not check_memory():
-            print(f"Прерывание обработки на чанке {start}, недостаточно памяти.")
-            break       
-        
-        # Создание видеоклипов для текущей части
-        clips = []
-        for index, row in chunk_data.iterrows():
-            speed = int(row['Speed'])
+    font_speed = ImageFont.truetype(str(font_bold_path), 200)
+    font_speed_unit = ImageFont.truetype(str(font_regular_path), 60)
+    ascent_regular, descent_regular = font_regular.getmetrics()
+    ascent_bold, descent_bold = font_bold.getmetrics()
 
-            # Создаем индикатор скорости
-            speed_indicator = create_speed_indicator(speed)
-            speed_indicator_path = os.path.join(hidden_folder, f'speed_indicator_{index}.png')
-            speed_indicator.save(speed_indicator_path, 'PNG')
+    # Обрабатываем данные для каждого кадра
+    for frame_index, frame_time in enumerate(frame_times):
+        print(f"Обработка кадра {frame_index+1}/{total_frames}")
+        progress = ((frame_index + 1) / total_frames) * 100
+        app.after(0, update_progress_bar, progress)
 
-            # Создаем клип из изображения индикатора скорости
-            speed_indicator_clip = ImageClip(speed_indicator_path).set_duration(row['Duration'])
-            speed_indicator_clip = speed_indicator_clip.set_position((1673, 1708))  # Позиция графического спидометра
+        # Получаем значения для текущего времени кадра
+        try:
+            row = data.loc[frame_time]
+        except KeyError:
+            print(f"Не удалось получить данные для времени {frame_time}, пропуск кадра.")
+            continue
 
-            # Создаем клип графика для текущего кадра
-            graph_clip = create_graph(data, row['Date'], row['Duration'])
-            # Размещаем клип с графиком в правом нижнем углу экрана
-            graph_clip = graph_clip.set_position(('left', 'top'), relative=True)
-            # Отступы от краев экрана (10 пикселей)
-            graph_clip = graph_clip.margin(left=40, top=50, opacity=0)
+        # Проверка значений и установка для отображения
+        speed_value_for_calc = int(row['Speed']) if not pd.isna(row['Speed']) else 0
+        speed_display = str(int(row['Speed'])) if not pd.isna(row['Speed']) else "--"
 
-            speed = int(row['Speed'])
-            pwm = int(row['PWM'])
-            speed_color = get_speed_color(speed)
-            pwm_color = get_pwm_color(pwm)
+        pwm_display = str(int(row['PWM'])) if 'PWM' in row and not pd.isna(row['PWM']) else "--"
+        voltage_display = str(int(row['Voltage'])) if 'Voltage' in row and not pd.isna(row['Voltage']) else "--"
+        power_display = str(int(row['Power'])) if 'Power' in row and not pd.isna(row['Power']) else "--"
+        battery_level_display = str(int(row['Battery level'])) if 'Battery level' in row and not pd.isna(row['Battery level']) else "--"
+        temperature_display = str(int(row['Temperature'])) if 'Temperature' in row and not pd.isna(row['Temperature']) else "--"
+        gps_speed_display = str(int(row['GPS Speed'])) if 'GPS Speed' in row and not pd.isna(row['GPS Speed']) else "--"
 
-            # Расчет текущего пробега относительно начального значения
-            current_mileage = round(int(row['Total mileage']) - initial_mileage)
+        total_mileage_value = row['Total mileage'] if 'Total mileage' in row and not pd.isna(row['Total mileage']) else initial_mileage
+        mileage_display = str(round(total_mileage_value - initial_mileage))
 
-            # Формирование текста с данными
-            parameters = [
-                (get_localized_string("max_speed"), int(data['MaxSpeed'].iloc[index]), get_localized_string("km_h")),
-                (get_localized_string("voltage"), int(row['Voltage']), get_localized_string("volt")),
-                (get_localized_string("power"), int(row['Power']), get_localized_string("watt")),
-                (get_localized_string("temperature"), int(row['Temperature']), get_localized_string("celsius")),
-                (get_localized_string("battery"), int(row['Battery level']), "%"),
-                (get_localized_string("mileage"), current_mileage, get_localized_string("km")),
-                (get_localized_string("pwm"), pwm, "%"),
-                ("GPS", int(row['GPS Speed']), get_localized_string("km_h")) if not pd.isna(row['GPS Speed']) else ("GPS", "", "")
-            ]
+        max_speed_display = str(int(row['MaxSpeed'])) if 'MaxSpeed' in row and not pd.isna(row['MaxSpeed']) else "--"
 
-            # Создаем фоновый клип для этого кадра
-            background_clip = ColorClip(size=(3840, 2160), color=(0, 0, 0), duration=row['Duration'])
+        # Создаем изображение
+        image = Image.new('RGB', (3840, 2160), color=(0, 0, 255))
+        draw = ImageDraw.Draw(image)
 
-            # Создаем текстовые клипы для всех элементов, кроме скорости
-            text_clips = []
-            total_height = sum(78 for _ in parameters)  # Высота каждой строки
-            y_start = (576 - total_height) // 2 + 30  # Начальная позиция по Y для центрирования + отступ от верха
+        # Создаем индикатор скорости
+        speed_indicator = create_speed_indicator(speed_value_for_calc)
+        speed_indicator_position = (1673, 1708)
+        image.paste(speed_indicator, speed_indicator_position, speed_indicator)
 
-            for param_name, param_value, unit in parameters:
+        # Формирование текста с данными
+        parameters = [
+            (get_localized_string("max_speed"), max_speed_display, get_localized_string("km_h")),
+            ("GPS", gps_speed_display, get_localized_string("km_h")),
+            (get_localized_string("voltage"), voltage_display, get_localized_string("volt")),
+            (get_localized_string("temperature"), temperature_display, get_localized_string("celsius")),
+            (get_localized_string("battery"), battery_level_display, "%"),
+            (get_localized_string("mileage"), mileage_display, get_localized_string("km")),
+            (get_localized_string("pwm"), pwm_display, "%"),
+            (get_localized_string("power"), power_display, get_localized_string("watt"))
+        ]
 
-                #ЕСЛИ КРАШИТСЯ ПРОГРАММА ВКЛЮЧИ ЭТОТ ЛОГ
-                #print(f"Creating TextClip for: {param_name} {param_value} {unit}")
+        # Расчет общей ширины параметров
+        total_width = 0
+        for param_name, param_value, unit in parameters:
+            if param_name == "GPS" and param_value == "":
+                continue
+            # Используем font.getbbox() для получения размеров текста
+            name_bbox = font_regular.getbbox(param_name)
+            name_size = (name_bbox[2] - name_bbox[0], name_bbox[3] - name_bbox[1])
 
-                if param_name == "GPS" and param_value == "":
-                    continue  # Пропускаем создание клипов для пустого значения
-                    
-                # Выбор цвета текста в зависимости от параметра
-                text_color = 'white'  # цвет по умолчанию
-                if param_name == get_localized_string("pwm"):
-                    text_color = get_pwm_color(param_value)  
+            value_bbox = font_bold.getbbox(str(param_value))
+            value_size = (value_bbox[2] - value_bbox[0], value_bbox[3] - value_bbox[1])
 
-                # Создаем отдельные клипы для каждой части параметра
-                name_clip = TextClip(param_name, fontsize=70 , color='white', font=font_regular_path)
-                value_clip = TextClip(str(param_value), fontsize=85 , color=text_color, font=font_bold_path)  # применение цвета только здесь
-                unit_clip = TextClip(unit, fontsize=70 , color='white', font=font_regular_path)
+            unit_bbox = font_regular.getbbox(unit)
+            unit_size = (unit_bbox[2] - unit_bbox[0], unit_bbox[3] - unit_bbox[1])
 
-                # Рассчитываем x_position
-                x_position = 3840 - name_clip.size[0] - value_clip.size[0] - unit_clip.size[0] - 100 #отступ вторичных показателей от правого края экрана
+            param_width = name_size[0] + value_size[0] + unit_size[0] + 30
+            total_width += param_width + left_padding + right_padding + parameter_spacing
+        total_width -= parameter_spacing  # Вычитаем лишний отступ после последнего параметра
 
-                # Определяем максимальную высоту среди трех клипов
-                max_height = max(name_clip.size[1], value_clip.size[1], unit_clip.size[1])
+        # Начальная позиция для центрирования
+        current_x = (3840 - total_width) // 2
+        y_position = 30  # Отступ от верхнего края экрана
 
-                # Рассчитываем Y-координату так, чтобы клипы были выровнены по нижнему краю
-                name_y = y_start + (max_height - name_clip.size[1]) 
-                value_y = y_start + (max_height - value_clip.size[1]) + 4 # Двигаем значение ЦИРФ выше или ниже относительно других чем больше тем оно ниже чем меньше тем выше
-                unit_y = y_start + (max_height - unit_clip.size[1])
+        # Рисуем параметры
+        for param_name, param_value, unit in parameters:
+            if param_name == "GPS" and param_value == "":
+                continue
 
-                # Устанавливаем позиции клипов
-                name_clip = name_clip.set_position((x_position, name_y)).set_duration(row['Duration'])
-                value_clip = value_clip.set_position((x_position + name_clip.size[0] + 20, value_y)).set_duration(row['Duration'])
-                unit_clip = unit_clip.set_position((x_position + name_clip.size[0] + value_clip.size[0] + 40, unit_y)).set_duration(row['Duration'])
+            background_color = (0, 0, 0, 255)
+            text_color = 'white'
 
-                # ЕСЛИ ПРОГРАММА КРАШИТСЯ СНИМИ ЭТИ КОММЕНТАРИИ будет видно почему крашится
-                print(f"Created TextClip for {param_name}. Size: {name_clip.size}")
-                print(f"Created TextClip for {param_value}. Size: {value_clip.size}")
-                print(f"Created TextClip for {unit}. Size: {unit_clip.size}")
+            # Особые цвета для PWM
+            if param_name == get_localized_string("pwm"):
+                try:
+                    pwm_value = int(param_value)
+                    if 80 <= pwm_value < 90:
+                        background_color = (255, 255, 0, 255)
+                        text_color = 'black'
+                    elif pwm_value >= 90:
+                        background_color = (255, 0, 0, 255)
+                        text_color = 'black'
+                except ValueError:
+                    pass
 
-                # Добавляем клипы в список
-                text_clips.extend([name_clip, value_clip, unit_clip])
+            # Размеры текста
+            name_bbox = font_regular.getbbox(param_name)
+            name_size = (name_bbox[2] - name_bbox[0], name_bbox[3] - name_bbox[1])
 
-                # Увеличиваем y_start для следующего параметра
-                y_start += max_height  # Используем max_height для учета выравнивания по нижнему краю
+            value_bbox = font_bold.getbbox(str(param_value))
+            value_size = (value_bbox[2] - value_bbox[0], value_bbox[3] - value_bbox[1])
 
-            # Создаем текстовый клип для значения скорости (TextClip1)
-            speed_value_clip = TextClip(f"{int(row['Speed'])}", fontsize=200, color=speed_color, font=font_bold_path)
-            speed_value_clip = speed_value_clip.set_position(lambda t: ('center', 2160 - speed_value_clip.size[1] - 100)).set_duration(row['Duration'])
+            unit_bbox = font_regular.getbbox(unit)
+            unit_size = (unit_bbox[2] - unit_bbox[0], unit_bbox[3] - unit_bbox[1])
 
-            # Создаем текстовый клип для единиц измерения скорости (TextClip2)
-            speed_unit_clip = TextClip(get_localized_string("speed_unit"), fontsize=60, color='white', font=font_regular_path)
-            speed_unit_clip = speed_unit_clip.set_position(lambda t: ((3840 - speed_unit_clip.size[0]) / 2, speed_value_clip.pos(t)[1] + speed_value_clip.size[1] + -25)).set_duration(row['Duration']) # отступ от нижнего края для скорости КРУПНЫЙ
+            param_width = name_size[0] + value_size[0] + unit_size[0] + 30
+            rectangle_width = param_width + left_padding + right_padding
 
-            # Объединяем фоновый клип с текстовыми клипами и центральным текстовым клипом
-            video_clip = CompositeVideoClip([background_clip] + text_clips + [speed_value_clip, speed_unit_clip, graph_clip, speed_indicator_clip])
-            os.remove(speed_indicator_path)
-            clips.append(video_clip)
+            # Фиксированные координаты для верхней и нижней грани плашки
+            top_position = 20
+            bottom_position = 100
 
-            total_processed += 1
-            if total_processed % 10 == 0:  # Изменено с 100 на 10
-                print(f"Обработано {total_processed}/{len(data)} записей...")
-                progress = (total_processed / len(data)) * 100  # Вычисление прогресса
-                update_progress_bar(progress) # Обновление прогресс-бара 
+            rectangle_shape = [current_x - left_padding, top_position, current_x + rectangle_width - left_padding, bottom_position]
 
-        # Сохранение временного видеофайла для текущей части
-        temp_output_path = os.path.join(hidden_folder, f"{output_file_name}_part_{start//chunk_size}.mp4")
-        concatenate_videoclips(clips, method="compose").write_videofile(temp_output_path, fps=15, bitrate="20000k")
-        temp_video_files.append(temp_output_path)
-        print(f"Временный видеофайл {temp_output_path} создан.")
-        print(f"output_path: {output_path}") #для отладки
-        # Очистка памяти после обработки и сохранения каждого чанка
-        gc.collect()
+            # Рисуем фон прямоугольника
+            corner_radius = 20  # Радиус закругления углов
+            draw.rounded_rectangle(rectangle_shape, radius=corner_radius, fill=background_color)
 
+            # Устанавливаем начальную позицию для текста
+            text_x = current_x
 
-    # Объединение всех временных видеофайлов в один финальный с проверкой гребаной памяти!
-    final_clips = [VideoFileClip(file) for file in temp_video_files]
+            # Для regular шрифта (название параметра):
+            text_y = bottom_position - descent_regular - 57  # ОТСТУП ТЕКСТА ОТ ПЛАШКИ ВВЕРХ
+            draw.text((text_x, text_y), param_name, font=font_regular, fill=text_color)
 
-    if check_memory():
-        final_clip = concatenate_videoclips(final_clips, method="compose")
-        final_clip.write_videofile(output_path, fps=15, codec='libx264', bitrate="20000k")
-    print(f"Финальное видео сохранено в {output_path}")
-    for file in temp_video_files:
-        os.remove(file)
-        print(f"Временный файл {file} удален.")
-    shutil.rmtree(hidden_folder)
-    print(f"Скрытая папка {hidden_folder} удалена.")
+            # Для bold шрифта (значение параметра):
+            text_x += name_size[0] + 10
+            text_y = bottom_position - descent_bold - 57  # ОТСТУП ТЕКСТА ОТ ПЛАШКИ ВВЕРХ
+            draw.text((text_x, text_y), str(param_value), font=font_bold, fill=text_color)
+
+            # Для regular шрифта (единицы измерения):
+            text_x += value_size[0] + 10
+            text_y = bottom_position - descent_regular - 57  # ОТСТУП ТЕКСТА ОТ ПЛАШКИ ВВЕРХ
+            draw.text((text_x, text_y), unit, font=font_regular, fill=text_color)
+
+            current_x += rectangle_width + parameter_spacing
+
+        # Рисуем скорость
+        speed_bbox = font_speed.getbbox(speed_display)
+        speed_size = (speed_bbox[2] - speed_bbox[0], speed_bbox[3] - speed_bbox[1])
+        speed_x = (3840 - speed_size[0]) // 2
+        speed_y = 2160 - speed_size[1] - 210  # ОТСТУП значения скорость снизу
+        draw.text((speed_x, speed_y), speed_display, font=font_speed, fill='white')
+
+        # Рисуем единицы измерения скорости
+        speed_unit_str = get_localized_string("speed_unit")
+        unit_bbox = font_speed_unit.getbbox(speed_unit_str)
+        unit_size = (unit_bbox[2] - unit_bbox[0], unit_bbox[3] - unit_bbox[1])
+        unit_x = (3840 - unit_size[0]) // 2
+        unit_y = 2160 - unit_size[1] - 90  # ОТСТУП км/ч скорость снизу
+        draw.text((unit_x, unit_y), speed_unit_str, font=font_speed_unit, fill='white')
+
+        # Сохраняем изображение
+        image_filename = f"frame_{frame_index:07d}.png"
+        image_path = output_dir / image_filename
+        image.save(image_path)
+
+        total_processed += 1
+        progress = (total_processed / total_frames) * 100
+        update_progress_bar(progress)
+
     print("Обработка завершена успешно!")
-    # Добавьте следующий блок кода здесь
     end_time = time.time()
     elapsed_time = end_time - start_time
     minutes, seconds = divmod(elapsed_time, 60)
     print(f"Времени затрачено: {int(minutes)} минут {int(seconds)} секунд")
-    
-    on_thread_complete()
-    progress_bar.set(0)
-    print("Окончание выполнения функции create_speed_video")
-    logging.info("Функция create_speed_video завершила выполнение")
-
-def create_graph(data, current_time, duration):
-    # Фильтрация данных за последние 30 секунд
-    time_window = datetime.timedelta(seconds=30)
-    start_time = current_time - time_window
-    filtered_data = data[(data['Date'] >= start_time) & (data['Date'] <= current_time)]
-
-    # Построение графика
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(filtered_data['Date'], filtered_data['Speed'], color='red', label='Скорость', linewidth=7)
-    ax.plot(filtered_data['Date'], filtered_data['PWM'], color='blue', label='PWM', linewidth=7)
-
-    # Настройка осей
-    ax.set_yticks(ax.get_yticks())  # Оставляем цифры на оси Y
-    ax.set_yticklabels([f"{int(y)}" for y in ax.get_yticks()], color='white')  # Форматируем цифры на оси Y в белый цвет
-
-    # Скрываем ось X
-    ax.xaxis.set_visible(False)
-
-    # Оставляем видимой ось Y
-    ax.yaxis.set_visible(True)
-
-    # Изменение цвета меток оси Y на белый и увеличение их размера, а также увеличение размера делений
-    ax.tick_params(axis='y', colors='white', labelsize=25, length=10, width=2)
-
-    # Убираем лишние элементы
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.spines['bottom'].set_visible(False)
-
-    # Скрываем линию оси Y, но оставляем деления и метки видимыми
-    ax.spines['left'].set_visible(False)
-
-
-    # Убираем фон
-    ax.set_facecolor('none')
-    fig.patch.set_facecolor('none')
-
-    if ax.get_legend():
-        ax.get_legend().remove()  # Убираем легенду, если она существует
-
-    plt.tight_layout()
-
-    # Сохранение графика во временный файл изображения
-    temp_image_path = 'temp_plot.png'
-    plt.savefig(temp_image_path, transparent=True)
-    plt.close()
-
-    # Преобразование изображения в клип MoviePy
-    graph_clip = ImageClip(temp_image_path).set_duration(duration)
-    os.remove(temp_image_path)  # Удаление временного файла
-
-    return graph_clip
 
 
 class TextRedirector(object):
-    def __init__(self, widget, stdout, stderr, max_lines=10):
+    def __init__(self, widget, stdout, stderr):
         self.widget = widget
         self.stdout = stdout
         self.stderr = stderr
-        self.max_lines = max_lines
 
     def write(self, message):
-        # Список ключевых фраз для фильтрации сообщений
-        key_phrases = [
-            "Начало выполнения функции",
-            "Создана скрытая",
-            "Обработка",
-            "Доступная память",
-            "Обработано",
-            "Building video",
-            "Writing video",
-            "Done",
-            "video ready",
-            "Временный",
-            "видео",
-            "Временный файл",
-            "Скрытая папка",
-            "Error",
-            "недостаточно",
-            "Неверный формат",
-
-        ]
-
-        # Проверяем, содержит ли сообщение одну из ключевых фраз
-        if any(phrase in message for phrase in key_phrases):
-            formatted_message = message + "\n"  # Добавляем символ новой строки к сообщению
-            self.widget.insert(tk.END, formatted_message)
-            self.widget.see(tk.END)
-        else:
-            return  # Пропускаем сообщение, если оно не содержит ключевых фраз
+        self.widget.configure(state='normal')
+        self.widget.insert(tk.END, message)
+        self.widget.see(tk.END)
+        self.widget.configure(state='disabled')
 
         # Печатаем в stdout или stderr в зависимости от типа сообщения
         if 'Traceback' in message or 'Error' in message:
-            self.stderr.write(message + "\n")  # Также добавляем новую строку для ошибок
+            self.stderr.write(message)
         else:
-            self.stdout.write(message + "\n")
+            self.stdout.write(message)
 
-        # Удаление старых строк, чтобы сохранить ограничение в 50 строк
-        lines = self.widget.get(1.0, tk.END).split('\n')
-        while len(lines) > 101:  # (100 строк + 1 пустая строка)
-            self.widget.delete(1.0, 2.0)
-            lines = self.widget.get(1.0, tk.END).split('\n')
-
+        # Ограничение количества строк в виджете (опционально)
+        self.limit_lines()
 
     def flush(self):
         pass
 
+    def limit_lines(self, max_lines=500):
+        lines = self.widget.get(1.0, tk.END).split('\n')
+        if len(lines) > max_lines:
+            self.widget.configure(state='normal')
+            self.widget.delete(1.0, f"{len(lines) - max_lines}.0")
+            self.widget.configure(state='disabled')
+
+
 def redirect_to_textbox(textbox):
     sys.stdout = TextRedirector(textbox, sys.stdout, sys.stderr)
     sys.stderr = sys.stdout  # Перенаправляем stderr в тот же объект, что и stdout
-
 
 
 def choose_csv_file():
@@ -568,54 +676,113 @@ def choose_csv_file():
         csv_file_path.set(filepath)
         csv_file_entry.delete(0, tk.END)
         csv_file_entry.insert(0, filepath)
-        start_button.configure(state=ctk.NORMAL) 
+        save_settings()  # Сохраняем настройки после выбора файла
+        update_start_button_state()  # Обновляем состояние кнопки
     else:
-        start_button.configure(state=ctk.DISABLED)  
+        update_start_button_state()  # Обновляем состояние кнопки
 
 
 def choose_output_directory():
     directory = filedialog.askdirectory()
-    output_dir_path.set(directory)
-    output_dir_entry.delete(0, tk.END)
-    output_dir_entry.insert(0, directory)
+    if directory:
+        output_dir_path.set(directory)
+        output_dir_entry.delete(0, tk.END)
+        output_dir_entry.insert(0, directory)
+        save_settings()  # Сохраняем настройки после выбора директории
+        update_start_button_state()  # Обновляем состояние кнопки
+    else:
+        update_start_button_state()  # Обновляем состояние кнопки
+
+
+def choose_video_output_directory():
+    directory = filedialog.askdirectory()
+    if directory:
+        video_output_dir_path.set(directory)
+        video_output_dir_entry.delete(0, tk.END)
+        video_output_dir_entry.insert(0, directory)
+        save_settings()  # Сохраняем настройки после выбора директории
+        update_start_button_state()  # Обновляем состояние кнопки
+    else:
+        update_start_button_state()  # Обновляем состояние кнопки
+
+
+def check_for_png_files(directory):
+    """Проверяем наличие PNG файлов в директории"""
+    png_files = [f for f in os.listdir(directory) if f.endswith('.png')]
+    return png_files
+
+
+def prompt_to_delete_files(png_files, directory):
+    """Спрашиваем пользователя, хочет ли он удалить PNG файлы"""
+    if not png_files:
+        return True  # Если файлов нет, продолжаем процесс
+
+    # Вопрос пользователю
+    result = tkinter.messagebox.askyesno("Обнаружены PNG файлы", 
+                                         f"В директории '{directory}' обнаружены файлы PNG. Хотите их удалить?")
+    if result:  # Если пользователь ответил "Да"
+        try:
+            for file in png_files:
+                os.remove(os.path.join(directory, file))
+            tkinter.messagebox.showinfo("Удаление", "Файлы успешно удалены.")
+            return True  # Продолжаем процесс
+        except Exception as e:
+            tkinter.messagebox.showerror("Ошибка удаления", f"Не удалось удалить файлы: {e}")
+            return False  # Останавливаем процесс в случае ошибки
+    else:
+        tkinter.messagebox.showinfo("Отмена", "Процесс был отменен.")
+        return False  # Останавливаем процесс если пользователь выбрал "Нет"
 
 
 def start_processing():
     global start_time
     csv_file = csv_file_path.get()
-    output_path = determine_output_path(csv_file, output_dir_path.get())
+    png_output_dir = output_dir_path.get()
+    video_output_dir = video_output_dir_path.get()
+    interpolate = interpolation_enabled.get()  # Добавлено
+    fps_input = fps_value.get().replace(',', '.')  # Заменяем запятую на точку
+    
+    # Валидация FPS
+    try:
+        fps_float = float(fps_input)
+    except ValueError:
+        tkinter.messagebox.showerror("Ошибка", "FPS должно быть числом.")
+        return
+
+    # Сброс прогресс-бара при начале нового процесса
+    progress_bar.set(0)
+
+    # Проверка, существуют ли выбранные директории
+    if not os.path.exists(png_output_dir) or not os.path.exists(video_output_dir):
+        tkinter.messagebox.showwarning("Ошибка", "Выбранные директории не существуют.")
+        return
+
+    if not csv_file or not png_output_dir or not video_output_dir:
+        tkinter.messagebox.showwarning("Предупреждение", "Пожалуйста, выберите CSV файл, директорию для PNG и директорию для видео.")
+        return
+
+    # Проверка на наличие PNG файлов и запрос на их удаление
+    png_files = check_for_png_files(png_output_dir)
+    if not prompt_to_delete_files(png_files, png_output_dir):
+        return  # Если пользователь отменил процесс, выходим из функции
 
     # Устанавливаем время начала обработки
     start_time = time.time()
-    print(f"Начало обработки: {start_time}")  # Добавьте эту строку для отладки
+    print(f"Начало обработки: {start_time}")  # Логирование для отладки
 
     # Запуск тяжелых вычислений в отдельном потоке
-    processing_thread = threading.Thread(target=create_speed_video, args=(csv_file, output_path))
+    processing_thread = threading.Thread(target=create_speed_images, args=(csv_file, png_output_dir, interpolate, fps_float))  # Передаем FPS
     processing_thread.start()
 
     # Деактивация кнопок
     choose_csv_button.configure(state=ctk.DISABLED)
     choose_output_dir_button.configure(state=ctk.DISABLED)
+    choose_video_output_dir_button.configure(state=ctk.DISABLED)
     start_button.configure(state=ctk.DISABLED)
 
     # Ожидание завершения потока и обновление интерфейса
     app.after(100, lambda: check_thread(processing_thread))
 
-
-def determine_output_path(csv_file, output_dir):
-    if not output_dir:
-        base_dir = os.path.dirname(csv_file)
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_file_name = f"rednessbot{timestamp}.mp4"
-        return os.path.join(base_dir, output_file_name)
-    else:
-        # Проверяем, указано ли имя файла в output_dir
-        if os.path.splitext(output_dir)[1] == "":
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            output_file_name = f"rednessbot{timestamp}.mp4"
-            return os.path.join(output_dir, output_file_name)
-        else:
-            return output_dir
 
 def check_thread(thread):
     if thread.is_alive():
@@ -624,37 +791,100 @@ def check_thread(thread):
         on_thread_complete()
 
 
+def check_ffmpeg_installed():
+    try:
+        # Запускаем команду ffmpeg -version, чтобы проверить, установлен ли ffmpeg
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def check_video_thread(thread):
+    if thread.is_alive():
+        app.after(100, lambda: check_video_thread(thread))
+    else:
+        on_video_thread_complete()
+
+
+def on_video_thread_complete():
+    # Устанавливаем прогресс-бар на 100% до вызова окна с сообщением
+    app.after(0, lambda: update_progress_bar(100.0))  # Обновляем прогресс до 100% перед окном
+    print("Видео успешно создано!")
+    app.after(100, lambda: tkinter.messagebox.showinfo("Успех", "Видео успешно создано!"))
+
+
 def on_thread_complete():
-    global start_time
-    print("Функция on_thread_complete начала выполнение")
-    # Активация кнопок
+    # Активация кнопок после завершения создания PNG файлов
     choose_csv_button.configure(state=ctk.NORMAL)
     choose_output_dir_button.configure(state=ctk.NORMAL)
+    choose_video_output_dir_button.configure(state=ctk.NORMAL)
     start_button.configure(state=ctk.NORMAL)
-    
-    # Вычисление времени выполнения
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    minutes, seconds = divmod(elapsed_time, 60)
-    print(f"Времени затрачено (on_thread_complete): {int(minutes)} минут {int(seconds)} секунд")
-    print("Функция on_thread_complete завершила выполнение")
+
+    # Устанавливаем прогресс-бар на 100% после завершения процесса
+    update_progress_bar(100.0)
+    # Прогресс-бар НЕ сбрасывается здесь
+
+    # Проверяем, выбрал ли пользователь директорию для видео
+    video_output_dir = video_output_dir_path.get()
+    if not video_output_dir:
+        tkinter.messagebox.showwarning("Предупреждение", "Пожалуйста, выберите директорию для сохранения видео файла.")
+        return
+
+    # Проверяем наличие ffmpeg
+    if not check_ffmpeg_installed():
+        tkinter.messagebox.showerror("Ошибка", "FFmpeg не установлен. Пожалуйста, установите FFmpeg.")
+        return
+
+    # Получаем значение FPS
+    fps_input = fps_value.get().replace(',', '.')  # Заменяем запятую на точку
+    try:
+        fps_float = float(fps_input)
+    except ValueError:
+        tkinter.messagebox.showerror("Ошибка", "FPS должно быть числом.")
+        return
+
+    # Запуск создания видео в отдельном потоке
+    # Получаем текущую дату и время
+    current_datetime = datetime.datetime.now()
+    formatted_datetime = current_datetime.strftime('%d%m%Y_%H%M%S')
+
+    # Формируем имя файла с расширением .mp4
+    video_filename = f"redness_{formatted_datetime}.mp4"
+    video_output_path = os.path.join(video_output_dir, video_filename)
+
+    # Запуск создания видео в отдельном потоке
+    video_thread = threading.Thread(target=create_video_from_images, args=(output_dir_path.get(), video_output_path, fps_float))  # Передаем FPS
+    video_thread.start()
+
+    # Ожидание завершения видео-потока
+    app.after(100, lambda: check_video_thread(video_thread))
+
 
 if __name__ == "__main__":
+    # Инициализация главного окна
+    app = ctk.CTk()  # создание основного окна
+    app.title("RednessBot 1.3")
     # Загрузка локализаций и получение списка языков
     language_names = load_localizations()
     language_options = list(language_names.values())
+    
     try:
-        app = ctk.CTk()
-        app.title("RednessBot 1.22")
-
-        # Установка размера окна и прочие настройки
-        app.wm_minsize(350, 560)
+        # Установка размера окна и другие настройки
+        app.wm_minsize(350, 730)
         app.wm_maxsize(350, app.winfo_screenheight())
         current_width = 350
-        current_height = 560
-        new_width = int(current_width)
-        app.geometry(f"{new_width}x{current_height}")
+        current_height = 730
+        app.geometry(f"{current_width}x{current_height}")
         app.resizable(True, True)
+
+        # Создайте переменные StringVar с указанием master=app
+        csv_file_path = tk.StringVar(master=app)
+        output_dir_path = tk.StringVar(master=app)
+        video_output_dir_path = tk.StringVar(master=app)
+        fps_value = tk.StringVar(master=app, value='30')  # Переменная для FPS с значением по умолчанию
+        # Чекбокс интерполяции
+        interpolation_enabled = tk.BooleanVar(value=True)  # По умолчанию включено
 
         # Создание виджетов с использованием customtkinter
         description_label = ctk.CTkLabel(app, text=get_localized_string('app_description'), wraplength=300)
@@ -667,50 +897,136 @@ if __name__ == "__main__":
         language_label = ctk.CTkLabel(language_frame, text=get_localized_string('language'))
         language_label.pack(side=tk.LEFT, padx=(0, 10))
 
-        default_language = 'en'  # или любой другой язык по умолчанию
-        language_var = tk.StringVar(value=language_names.get(default_language, language_options[0] if language_options else ''))
+        default_language = 'en'
+        language_var = tk.StringVar(value=language_names.get(default_language, language_options[0]))
 
-        language_menu = ctk.CTkOptionMenu(language_frame, values=language_options, 
-                                          command=lambda x: change_language(next(lang for lang, name in language_names.items() if name == x)),
-                                          variable=language_var)
+        language_menu = ctk.CTkOptionMenu(
+            language_frame, 
+            values=language_options, 
+            command=lambda x: change_language(next(lang for lang, name in language_names.items() if name == x)),
+            variable=language_var
+        )
         language_menu.pack(side=tk.LEFT)
 
-        csv_file_path = tk.StringVar()
+        # Создание чекбокса для включения/отключения интерполяции
+        interpolation_frame = ctk.CTkFrame(app)
+        interpolation_frame.pack(pady=(30, 10))  # Добавьте отступы сверху
+
+        interpolation_checkbox = ctk.CTkCheckBox(
+            interpolation_frame, 
+            text=get_localized_string("enable_interpolation"),
+            variable=interpolation_enabled
+        )
+        interpolation_checkbox.pack()
+
+        # Добавление метки и поля ввода для FPS под чекбоксом интерполяции
+        fps_frame = ctk.CTkFrame(app)
+        fps_frame.pack(pady=(10, 10))  # Отступы сверху и снизу
+
+        fps_label = ctk.CTkLabel(fps_frame, text=get_localized_string("fps_label"))
+        fps_label.pack(side=tk.LEFT, padx=(0, 10))
+
+        fps_entry = ctk.CTkEntry(
+            fps_frame, 
+            textvariable=fps_value, 
+            width=100,
+            placeholder_text="e.g., 29.97"  # Добавлено для удобства пользователя
+        )
+        fps_entry.pack(side=tk.LEFT)
+
+        # Создание кнопок выбора файлов и директорий
         choose_csv_button = ctk.CTkButton(app, text=get_localized_string('choose_csv'), command=choose_csv_file)
         choose_csv_button.pack(pady=(20, 0))
 
         csv_file_entry = ctk.CTkEntry(app, textvariable=csv_file_path, width=300)
         csv_file_entry.pack(pady=(20, 0))
 
-        output_dir_path = tk.StringVar()
         choose_output_dir_button = ctk.CTkButton(app, text=get_localized_string('choose_output'), command=choose_output_directory)
         choose_output_dir_button.pack(pady=(20, 0))
 
         output_dir_entry = ctk.CTkEntry(app, textvariable=output_dir_path, width=300)
         output_dir_entry.pack(pady=(20, 0))
 
-        button_frame = ctk.CTkFrame(app, width=200, height=50)
+        choose_video_output_dir_button = ctk.CTkButton(app, text=get_localized_string('Choose video MP4 output'), command=choose_video_output_directory)
+        choose_video_output_dir_button.pack(pady=(20, 0))
+
+        video_output_dir_entry = ctk.CTkEntry(app, textvariable=video_output_dir_path, width=300)
+        video_output_dir_entry.pack(pady=(20, 0))
+
+        # Поле ввода FPS уже добавлено выше
+
+        progress_bar = ctk.CTkProgressBar(master=app, width=300)
+        progress_bar.set(0)
+        progress_bar.pack(pady=(30, 10), padx=10)  # Добавляем больше отступов снизу
+
+        button_frame = ctk.CTkFrame(app, width=200, height=80)
         button_frame.pack_propagate(False)
         button_frame.pack(pady=(30, 0))
 
-        start_button = ctk.CTkButton(button_frame, text=get_localized_string('start_process'), command=start_processing, state='disabled')
+        start_button = ctk.CTkButton(
+            button_frame, 
+            text=get_localized_string('start_process'), 
+            command=start_processing, 
+            state=ctk.DISABLED
+        )
         start_button.pack(fill='both', expand=True)
-     
-        progress_bar = ctk.CTkProgressBar(master=app, width=300)
-        progress_bar.set(0)
-        progress_bar.pack(pady=20, padx=20, )
 
+        def delayed_load_settings():
+            print("Вызов функции load_settings с задержкой")
+            csv_file, output_dir, video_output_dir, lang, fps = load_settings()
+            
+            def update_ui():
+                csv_file_path.set(csv_file)
+                output_dir_path.set(output_dir)
+                video_output_dir_path.set(video_output_dir)
+                fps_value.set(str(fps))  # Установка значения FPS
+                
+                csv_file_entry.delete(0, tk.END)
+                csv_file_entry.insert(0, csv_file)
+                
+                output_dir_entry.delete(0, tk.END)
+                output_dir_entry.insert(0, output_dir)
+                
+                video_output_dir_entry.delete(0, tk.END)
+                video_output_dir_entry.insert(0, video_output_dir)
+                
+                fps_entry.delete(0, tk.END)
+                fps_entry.insert(0, str(fps))  # Вставка FPS в поле ввода
+                
+                if lang in localizations:
+                    change_language(lang)
+                
+                update_start_button_state()
+                
+                print("Значения виджетов после обновления:")
+                print(f"csv_file_entry: {csv_file_entry.get()}")
+                print(f"output_dir_entry: {output_dir_entry.get()}")
+                print(f"video_output_dir_entry: {video_output_dir_entry.get()}")
+                print(f"fps_entry: {fps_entry.get()}")  # Печать FPS
+                
+            app.after(0, update_ui)
+            
+            def check_values():
+                print("Проверка значений после загрузки настроек:")
+                print(f"csv_file_path: {csv_file_path.get()}")
+                print(f"output_dir_path: {output_dir_path.get()}")
+                print(f"video_output_dir_path: {video_output_dir_path.get()}")
+                print(f"fps_value: {fps_value.get()}")  # Печать FPS
+                print(f"Текущие значения виджетов:")
+                print(f"csv_file_entry: {csv_file_entry.get()}")
+                print(f"output_dir_entry: {output_dir_entry.get()}")
+                print(f"video_output_dir_entry: {video_output_dir_entry.get()}")
+                print(f"fps_entry: {fps_entry.get()}")  # Печать FPS
+                
+            app.after(100, check_values)
 
-        console_log = customtkinter.CTkTextbox(app, height=10)
-        console_log.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True, pady=(20, 20),padx=(20, 20))
+        # Загружаем настройки после создания всех виджетов
+        print("Планирование вызова функции load_settings")
+        app.after(1000, delayed_load_settings)
 
-        redirect_to_textbox(console_log)
-
-        update_ui_language()
-
-        change_language('en')
-
+        print("Запуск главного цикла приложения")
         app.mainloop()
+
     except Exception as e:
         print(f"An error occurred: {str(e)}")
         import traceback
